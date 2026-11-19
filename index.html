@@ -1,0 +1,1611 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>角が立たないLINE・Slack代筆メーカー</title>
+
+  <!-- PWA / iOSホーム画面追加用メタタグ -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="角なし代筆" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="theme-color" content="#f8fafc" />
+  <meta name="description" content="LINEやSlackのスクショからAIっぽさを消した自然な返信案を4パターン生成" />
+
+  <!-- インラインSVGアイコン -->
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128'%3E%3Crect width='128' height='128' rx='28' fill='%230f766e'/%3E%3Cpath d='M30 46c0-10 9-18 20-18h28c11 0 20 8 20 18v22c0 10-9 18-20 18H56l-18 14v-14c-5-3-8-10-8-18V46z' fill='%23ffffff'/%3E%3Ccircle cx='50' cy='57' r='4.5' fill='%230f766e'/%3E%3Ccircle cx='64' cy='57' r='4.5' fill='%230f766e'/%3E%3Ccircle cx='78' cy='57' r='4.5' fill='%230f766e'/%3E%3C/svg%3E" />
+  <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Crect width='180' height='180' fill='%230f766e'/%3E%3Cpath d='M42 64c0-14 13-25 28-25h40c15 0 28 11 28 25v32c0 14-13 25-28 25H78l-24 20v-20c-7-4-12-13-12-25V64z' fill='%23ffffff'/%3E%3Ccircle cx='70' cy='80' r='6.5' fill='%230f766e'/%3E%3Ccircle cx='90' cy='80' r='6.5' fill='%230f766e'/%3E%3Ccircle cx='110' cy='80' r='6.5' fill='%230f766e'/%3E%3C/svg%3E" />
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#f0fdfa',
+              100: '#ccfbf1',
+              500: '#14b8a6',
+              600: '#0d9488',
+              700: '#0f766e',
+              800: '#115e59',
+            },
+            linebg: '#eef3f7',
+            linebubble: '#dcfce7',
+            linebubbleborder: '#bbf7d0',
+          },
+          fontFamily: {
+            sans: ['-apple-system', 'BlinkMacSystemFont', '"Hiragino Sans"', '"Hiragino Kaku Gothic ProN"', '"Noto Sans JP"', 'sans-serif'],
+          }
+        }
+      }
+    };
+  </script>
+
+  <style>
+    :root {
+      --sat: env(safe-area-inset-top, 0px);
+      --sab: env(safe-area-inset-bottom, 0px);
+      --sal: env(safe-area-inset-left, 0px);
+      --sar: env(safe-area-inset-right, 0px);
+    }
+
+    html, body {
+      -webkit-tap-highlight-color: transparent;
+      overscroll-behavior-y: none;
+      background-color: #f8fafc;
+    }
+
+    .safe-top {
+      padding-top: calc(0.75rem + var(--sat));
+    }
+
+    .safe-bottom {
+      padding-bottom: calc(1rem + var(--sab));
+    }
+
+    .safe-modal-bottom {
+      padding-bottom: calc(1.5rem + var(--sab));
+    }
+
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+
+    /* LINE風の右吹き出しテール */
+    .chat-bubble {
+      position: relative;
+      border-radius: 16px 16px 4px 16px;
+    }
+
+    @keyframes fadeSlideUp {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .animate-fade-up {
+      animation: fadeSlideUp 0.28s ease-out forwards;
+    }
+
+    @keyframes pulseSoft {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.45; }
+    }
+
+    .animate-pulse-soft {
+      animation: pulseSoft 1.5s ease-in-out infinite;
+    }
+  </style>
+</head>
+<body class="text-slate-800 antialiased min-h-screen flex flex-col">
+
+  <!-- 固定ヘッダー -->
+  <header class="sticky top-0 z-30 bg-white/90 backdrop-blur-md border-b border-slate-200/80 safe-top pb-3 px-4">
+    <div class="max-w-lg mx-auto flex items-center justify-between gap-2">
+      <div class="flex items-center gap-2.5 min-w-0">
+        <div class="w-9 h-9 rounded-xl bg-brand-700 text-white flex items-center justify-center shrink-0 shadow-sm">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+          </svg>
+        </div>
+        <div class="min-w-0">
+          <h1 class="text-[15px] font-bold text-slate-900 tracking-tight truncate">角が立たない代筆メーカー</h1>
+          <p class="text-[11px] text-slate-500 truncate">LINE・Slackのスクショから自然な返信案を作成</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-1.5 shrink-0">
+        <button id="openSettingsBtn" type="button" class="relative flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200/80 active:scale-95 transition text-xs font-semibold text-slate-700" aria-label="設定を開く">
+          <svg class="w-4 h-4 text-slate-600" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+          <span>設定</span>
+          <span id="apiKeyDot" class="hidden absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-rose-500 ring-2 ring-white"></span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- メインコンテンツ -->
+  <main class="flex-1 max-w-lg w-full mx-auto px-4 pt-4 pb-28 space-y-4">
+
+    <!-- APIキー未設定バナー -->
+    <div id="apiKeyAlert" class="hidden rounded-2xl bg-amber-50 border border-amber-200/90 p-3.5 flex items-center justify-between gap-3">
+      <div class="flex items-start gap-2.5">
+        <svg class="w-5 h-5 text-amber-600 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+        </svg>
+        <div class="text-xs text-amber-900 leading-relaxed">
+          <span class="font-bold">Gemini APIキーが未設定です。</span><br>
+          設定画面からAPIキーを登録すると返信案を生成できます。
+        </div>
+      </div>
+      <button id="alertSettingsBtn" type="button" class="shrink-0 px-3 py-1.5 rounded-lg bg-amber-600 text-white text-xs font-semibold active:scale-95 transition">
+        登録する
+      </button>
+    </div>
+
+    <!-- 1. トーク画面・テキスト入力カード -->
+    <section class="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-4 space-y-3.5">
+      <div class="flex items-center justify-between">
+        <h2 class="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+          <span class="w-5 h-5 rounded-full bg-brand-50 text-brand-700 text-xs font-bold flex items-center justify-center">1</span>
+          トーク内容を読み込む
+        </h2>
+        <span class="text-[11px] text-slate-400 flex items-center gap-1">
+          <svg class="w-3.5 h-3.5 text-brand-600" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+          </svg>
+          履歴・画像は保存されません
+        </span>
+      </div>
+
+      <!-- 画像入力ボタン群 -->
+      <div class="grid grid-cols-2 gap-2.5">
+        <label class="flex flex-col items-center justify-center gap-1.5 py-3.5 px-3 rounded-xl border border-dashed border-brand-500/60 bg-brand-50/40 hover:bg-brand-50 active:scale-[0.98] transition cursor-pointer text-center">
+          <svg class="w-6 h-6 text-brand-700" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+          <span class="text-xs font-bold text-brand-800">スクショを選択</span>
+          <span class="text-[10px] text-slate-500">複数枚OK・自動圧縮</span>
+          <input id="chatImageInput" type="file" accept="image/*" multiple class="hidden" />
+        </label>
+
+        <button id="pasteClipboardBtn" type="button" class="flex flex-col items-center justify-center gap-1.5 py-3.5 px-3 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 active:scale-[0.98] transition text-center">
+          <svg class="w-6 h-6 text-slate-700" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+          </svg>
+          <span class="text-xs font-bold text-slate-800">コピーから貼付</span>
+          <span class="text-[10px] text-slate-500">iPhoneスクショ対応</span>
+        </button>
+      </div>
+
+      <!-- プライバシーマスクスイッチ -->
+      <div class="flex items-center justify-between bg-slate-50 rounded-xl px-3 py-2.5 border border-slate-200/70">
+        <div class="pr-2">
+          <div class="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+            <span>プライバシー自動黒塗り</span>
+            <span class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-brand-100 text-brand-800">推奨</span>
+          </div>
+          <p class="text-[11px] text-slate-500 mt-0.5">送信前に上部約12%（相手の名前・アイコン帯）を自動マスク</p>
+        </div>
+        <label class="relative inline-flex items-center cursor-pointer shrink-0">
+          <input id="privacyMaskToggle" type="checkbox" checked class="sr-only peer" />
+          <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-600"></div>
+        </label>
+      </div>
+
+      <!-- 画像プレビューエリア（マスク反映後を表示） -->
+      <div id="imagePreviewContainer" class="hidden space-y-2">
+        <div class="flex items-center justify-between">
+          <span class="text-[11px] font-semibold text-slate-600" id="imageCountLabel">読み込み済み画像</span>
+          <button id="clearImagesBtn" type="button" class="text-[11px] text-rose-600 font-semibold hover:underline">すべてクリア</button>
+        </div>
+        <div id="imagePreviewList" class="flex gap-2.5 overflow-x-auto pb-1 no-scrollbar"></div>
+        <p class="text-[10px] text-slate-400">※サムネイルをタップすると、黒塗り適用後の送信画像を拡大確認できます</p>
+      </div>
+
+      <!-- テキスト直接貼り付け -->
+      <div>
+        <label for="chatTextInput" class="block text-xs font-semibold text-slate-600 mb-1.5">
+          またはトーク本文を直接貼り付け <span class="font-normal text-slate-400">（画像と併用可）</span>
+        </label>
+        <textarea id="chatTextInput" rows="3" placeholder="例：相手「今週の金曜って空いてる？みんなで飲もうって話になってて！」" class="w-full rounded-xl border border-slate-200 bg-slate-50/70 focus:bg-white focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none p-3 text-sm text-slate-800 placeholder:text-slate-400 transition resize-y"></textarea>
+      </div>
+    </section>
+
+    <!-- 2. 相手・状況のワンタップ設定カード -->
+    <section class="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-4 space-y-4">
+      <div class="flex items-center justify-between">
+        <h2 class="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+          <span class="w-5 h-5 rounded-full bg-brand-50 text-brand-700 text-xs font-bold flex items-center justify-center">2</span>
+          相手と状況を選ぶ
+        </h2>
+        <!-- 文体プロファイルON/OFFバッジ -->
+        <button id="styleQuickToggle" type="button" class="flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-semibold transition active:scale-95">
+          <span id="styleQuickDot" class="w-2 h-2 rounded-full"></span>
+          <span id="styleQuickLabel">文体未登録</span>
+        </button>
+      </div>
+
+      <!-- 相手属性 -->
+      <div class="space-y-2">
+        <div class="text-xs font-semibold text-slate-600">相手属性</div>
+        <div id="recipientChips" class="flex flex-wrap gap-2"></div>
+      </div>
+
+      <!-- 状況プリセット -->
+      <div class="space-y-2">
+        <div class="text-xs font-semibold text-slate-600">状況プリセット</div>
+        <div id="situationChips" class="flex flex-wrap gap-2"></div>
+      </div>
+
+      <!-- 吹き出しスタイル -->
+      <div class="space-y-2">
+        <div class="text-xs font-semibold text-slate-600">吹き出しスタイル</div>
+        <div class="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-xl">
+          <button type="button" data-bubble-mode="single" class="bubble-mode-btn py-2 px-2.5 rounded-lg text-xs font-bold transition text-center">
+            1通にまとめる
+          </button>
+          <button type="button" data-bubble-mode="split" class="bubble-mode-btn py-2 px-2.5 rounded-lg text-xs font-bold transition text-center">
+            2〜3通の連投優先
+          </button>
+        </div>
+      </div>
+
+      <!-- 本音・補足メモ -->
+      <div class="space-y-1.5">
+        <label for="honneMemoInput" class="block text-xs font-semibold text-slate-600">
+          本音・補足メモ <span class="font-normal text-slate-400">（任意・1行）</span>
+        </label>
+        <input id="honneMemoInput" type="text" placeholder="例：本当は疲れてて行きたくない / 予算は5000円まで" class="w-full rounded-xl border border-slate-200 bg-slate-50/70 focus:bg-white focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none px-3.5 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 transition" />
+        <p class="text-[10px] text-slate-400">書いた本音は相手を傷つけないよう自然にオブラートに包みます</p>
+      </div>
+    </section>
+
+    <!-- ローディング表示 -->
+    <section id="loadingSection" class="hidden bg-white rounded-2xl shadow-sm border border-slate-200/80 p-6 text-center space-y-3 animate-fade-up">
+      <div class="inline-flex items-center justify-center w-11 h-11 rounded-full bg-brand-50 text-brand-700">
+        <svg class="w-6 h-6 animate-spin" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+        </svg>
+      </div>
+      <div>
+        <p id="loadingMessage" class="text-sm font-bold text-slate-800">空気を読んで返信案を作成中...</p>
+        <p class="text-xs text-slate-500 mt-1">AIっぽさを消した4パターンを考えています</p>
+      </div>
+    </section>
+
+    <!-- エラー表示 -->
+    <section id="errorSection" class="hidden rounded-2xl bg-rose-50 border border-rose-200 p-4 text-xs text-rose-800 space-y-1.5 animate-fade-up">
+      <div class="font-bold flex items-center gap-1.5">
+        <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <span>生成できませんでした</span>
+      </div>
+      <p id="errorText" class="leading-relaxed"></p>
+    </section>
+
+    <!-- 3. 生成結果セクション -->
+    <section id="resultSection" class="hidden space-y-4 animate-fade-up">
+      <!-- 空気読みメモ -->
+      <div class="rounded-2xl bg-slate-900 text-white p-4 shadow-sm space-y-1.5">
+        <div class="flex items-center gap-1.5 text-[11px] font-bold text-brand-100 tracking-wide">
+          <svg class="w-4 h-4 text-brand-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+          <span>空気読みメモ</span>
+        </div>
+        <p id="airReadingMemoText" class="text-[13px] leading-relaxed text-slate-100 whitespace-pre-line"></p>
+      </div>
+
+      <!-- 4パターンカード群 -->
+      <div id="patternsContainer" class="space-y-3.5"></div>
+
+      <!-- 4案まとめてワンタップ微調整バー -->
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-4 space-y-2.5">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold text-slate-700">4パターンまとめて微調整（リテイク）</span>
+          <span class="text-[10px] text-slate-400">文脈を保ったまま再生成</span>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <button type="button" data-global-retake="もう少し短く" class="global-retake-btn py-2 px-3 rounded-xl border border-slate-200 bg-slate-50 hover:bg-brand-50 hover:border-brand-300 text-xs font-semibold text-slate-700 active:scale-95 transition">
+            ✂️ もう少し短く
+          </button>
+          <button type="button" data-global-retake="もっとフランクに" class="global-retake-btn py-2 px-3 rounded-xl border border-slate-200 bg-slate-50 hover:bg-brand-50 hover:border-brand-300 text-xs font-semibold text-slate-700 active:scale-95 transition">
+            😊 もっとフランクに
+          </button>
+          <button type="button" data-global-retake="もっと丁寧に" class="global-retake-btn py-2 px-3 rounded-xl border border-slate-200 bg-slate-50 hover:bg-brand-50 hover:border-brand-300 text-xs font-semibold text-slate-700 active:scale-95 transition">
+            🙇 もっと丁寧に
+          </button>
+          <button type="button" data-global-retake="絵文字を減らす" class="global-retake-btn py-2 px-3 rounded-xl border border-slate-200 bg-slate-50 hover:bg-brand-50 hover:border-brand-300 text-xs font-semibold text-slate-700 active:scale-95 transition">
+            🫧 絵文字を減らす
+          </button>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- 画面下部の固定アクションボタン -->
+  <div class="fixed bottom-0 inset-x-0 z-20 bg-white/90 backdrop-blur-md border-t border-slate-200/80 px-4 pt-3 safe-bottom">
+    <div class="max-w-lg mx-auto">
+      <button id="generateBtn" type="button" class="w-full py-3.5 px-5 rounded-2xl bg-brand-700 hover:bg-brand-800 active:scale-[0.99] disabled:opacity-50 disabled:pointer-events-none text-white font-bold text-[15px] shadow-md shadow-brand-700/20 flex items-center justify-center gap-2 transition">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+        </svg>
+        <span>自然な返信案を4パターン作成</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- 設定・文体プロファイルモーダル -->
+  <div id="settingsModal" class="hidden fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-900/50 backdrop-blur-xs">
+    <div class="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-3xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-fade-up">
+      <!-- モーダルヘッダー -->
+      <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100 shrink-0">
+        <h3 class="text-base font-bold text-slate-900">設定・文体プロファイル</h3>
+        <button id="closeSettingsBtn" type="button" class="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 transition" aria-label="閉じる">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      <!-- モーダル本体 -->
+      <div class="overflow-y-auto px-5 py-4 space-y-6 safe-modal-bottom">
+
+        <!-- セクションA: Gemini APIキー -->
+        <div class="space-y-2.5">
+          <div class="flex items-center justify-between">
+            <label for="apiKeyInput" class="text-xs font-bold text-slate-800">Gemini APIキー</label>
+            <span class="text-[10px] text-slate-500">モデル: gemini-2.5-flash</span>
+          </div>
+          <div class="relative">
+            <input id="apiKeyInput" type="password" autocomplete="off" placeholder="AIzaSy..." class="w-full rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none pl-3.5 pr-16 py-2.5 text-sm font-mono text-slate-800" />
+            <button id="toggleApiKeyVisibility" type="button" class="absolute right-2 top-1/2 -translate-y-1/2 px-2.5 py-1 text-[11px] font-semibold text-slate-500 hover:text-slate-700">
+              表示
+            </button>
+          </div>
+          <div class="flex items-center justify-between gap-2">
+            <p class="text-[11px] text-slate-500 leading-snug">
+              キーはこのブラウザの <code class="text-[10px] bg-slate-100 px-1 rounded">localStorage</code> にのみ保存されます。
+            </p>
+            <button id="saveApiKeyBtn" type="button" class="shrink-0 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold active:scale-95 transition">
+              キーを保存
+            </button>
+          </div>
+        </div>
+
+        <hr class="border-slate-100" />
+
+        <!-- セクションB: 自分の文体登録 -->
+        <div class="space-y-3">
+          <div class="flex items-center justify-between">
+            <div>
+              <h4 class="text-xs font-bold text-slate-800">自分の文体登録（AI臭さの排除）</h4>
+              <p class="text-[11px] text-slate-500 mt-0.5">普段のLINEトークスクショ（1〜2枚）から文体の癖を自動抽出</p>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer shrink-0">
+              <input id="useStyleProfileToggle" type="checkbox" class="sr-only peer" />
+              <div class="w-10 h-5 bg-slate-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-brand-600"></div>
+            </label>
+          </div>
+
+          <!-- 文体解析用スクショ読み込み -->
+          <div class="rounded-xl bg-slate-50 border border-slate-200/80 p-3 space-y-2.5">
+            <div class="flex items-center gap-2">
+              <label class="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 text-xs font-semibold text-slate-700 cursor-pointer active:scale-[0.98] transition">
+                <svg class="w-4 h-4 text-brand-700" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                </svg>
+                <span>自分のトーク画面を選択（最大2枚）</span>
+                <input id="styleImageInput" type="file" accept="image/*" multiple class="hidden" />
+              </label>
+            </div>
+
+            <div id="styleImagePreviewList" class="hidden flex gap-2 overflow-x-auto no-scrollbar"></div>
+
+            <button id="analyzeStyleBtn" type="button" disabled class="w-full py-2 px-3 rounded-lg bg-brand-700 hover:bg-brand-800 disabled:bg-slate-300 disabled:text-slate-500 text-white text-xs font-bold active:scale-[0.99] transition flex items-center justify-center gap-1.5">
+              <span>Geminiで自分の文体を自動解析する</span>
+            </button>
+            <p class="text-[10px] text-slate-400">※解析用の画像も上部12%を自動黒塗りして送信し、端末に保存しません</p>
+          </div>
+
+          <!-- 保存・手動編集エリア -->
+          <div class="space-y-1.5">
+            <label for="styleProfileTextarea" class="block text-xs font-semibold text-slate-700">
+              文体プロファイル（手動編集OK）
+            </label>
+            <textarea id="styleProfileTextarea" rows="5" placeholder="例：&#10;・基本は柔らかいタメ口〜ですます混在&#10;・句点「。」はほぼ使わず改行で区切る&#10;・「！」は1文に1回程度、「笑」をたまに使う&#10;・絵文字は控えめ（🙏😅程度）、顔文字は使わない" class="w-full rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none p-3 text-xs leading-relaxed text-slate-800"></textarea>
+          </div>
+
+          <div class="flex items-center justify-between gap-2">
+            <button id="clearStyleBtn" type="button" class="text-xs text-rose-600 font-semibold hover:underline">
+              プロファイルを消去
+            </button>
+            <button id="saveStyleBtn" type="button" class="px-4 py-2 rounded-xl bg-brand-700 hover:bg-brand-800 text-white text-xs font-bold active:scale-95 transition">
+              文体を保存
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- 画像拡大確認ライトボックス（黒塗り確認用） -->
+  <div id="lightboxModal" class="hidden fixed inset-0 z-50 bg-slate-950/90 flex flex-col items-center justify-center p-4">
+    <div class="w-full max-w-md flex items-center justify-between text-white mb-3">
+      <span id="lightboxCaption" class="text-xs font-semibold text-slate-200">送信前プレビュー</span>
+      <button id="closeLightboxBtn" type="button" class="px-3 py-1.5 rounded-lg bg-white/15 text-xs font-bold">閉じる</button>
+    </div>
+    <img id="lightboxImg" src="" alt="送信前プレビュー画像" class="max-h-[75vh] max-w-full rounded-xl object-contain border border-white/15 shadow-2xl" />
+  </div>
+
+  <!-- トースト通知 -->
+  <div id="toast" class="pointer-events-none fixed top-16 left-1/2 -translate-x-1/2 z-[60] opacity-0 transition-all duration-200 translate-y-1">
+    <div id="toastInner" class="px-4 py-2.5 rounded-full bg-slate-900/95 text-white text-xs font-semibold shadow-lg flex items-center gap-2 whitespace-nowrap">
+      <svg class="w-4 h-4 text-brand-500 shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+      </svg>
+      <span id="toastMessage">コピーしました</span>
+    </div>
+  </div>
+
+  <script>
+    (() => {
+      // ==========================================
+      // 定数 & ストレージキー（画像・履歴は保存しない）
+      // ==========================================
+      const MODEL_NAME = 'gemini-2.5-flash';
+      const STORAGE_KEYS = {
+        API_KEY: 'kadonashi_gemini_api_key',
+        STYLE_PROFILE: 'kadonashi_style_profile',
+        STYLE_ENABLED: 'kadonashi_style_enabled',
+      };
+
+      const RECIPIENT_OPTIONS = [
+        '友人・同僚',
+        '上司・先輩',
+        'グループLINE',
+        '家族・恋人',
+        'ビジネス・Slack',
+      ];
+
+      const SITUATION_OPTIONS = [
+        'おまかせ',
+        'やんわり断る',
+        '放置明けリカバリー',
+        '会話のスマートな切り上げ',
+        '一旦保留・確認中',
+        '角を立てずに催促',
+        'グループ空気読み',
+        'お礼・フォロー',
+      ];
+
+      const PATTERN_BADGES = [
+        { bg: 'bg-slate-100', text: 'text-slate-700', accent: 'border-slate-200' },
+        { bg: 'bg-sky-50', text: 'text-sky-700', accent: 'border-sky-200' },
+        { bg: 'bg-emerald-50', text: 'text-emerald-700', accent: 'border-emerald-200' },
+        { bg: 'bg-amber-50', text: 'text-amber-800', accent: 'border-amber-200' },
+      ];
+
+      // ==========================================
+      // アプリ状態（メモリ内のみ）
+      // ==========================================
+      const state = {
+        apiKey: localStorage.getItem(STORAGE_KEYS.API_KEY) || '',
+        styleProfile: localStorage.getItem(STORAGE_KEYS.STYLE_PROFILE) || '',
+        styleEnabled: localStorage.getItem(STORAGE_KEYS.STYLE_ENABLED) === 'true',
+
+        privacyMask: true,
+        recipient: RECIPIENT_OPTIONS[0],
+        situation: SITUATION_OPTIONS[0],
+        bubbleMode: 'split', // 'single' | 'split'
+
+        // 読み込み済みチャット画像（メモリ上のみ保持）
+        // { id, imgElement, processedDataUrl, base64 }
+        chatImages: [],
+        // 文体解析用の一時画像（メモリ上のみ保持）
+        styleImages: [],
+
+        // 直近の生成結果（リテイク用）
+        lastResult: null,
+        isGenerating: false,
+      };
+
+      // ==========================================
+      // DOM 参照
+      // ==========================================
+      const els = {
+        openSettingsBtn: document.getElementById('openSettingsBtn'),
+        alertSettingsBtn: document.getElementById('alertSettingsBtn'),
+        apiKeyDot: document.getElementById('apiKeyDot'),
+        apiKeyAlert: document.getElementById('apiKeyAlert'),
+
+        chatImageInput: document.getElementById('chatImageInput'),
+        pasteClipboardBtn: document.getElementById('pasteClipboardBtn'),
+        privacyMaskToggle: document.getElementById('privacyMaskToggle'),
+        imagePreviewContainer: document.getElementById('imagePreviewContainer'),
+        imageCountLabel: document.getElementById('imageCountLabel'),
+        imagePreviewList: document.getElementById('imagePreviewList'),
+        clearImagesBtn: document.getElementById('clearImagesBtn'),
+        chatTextInput: document.getElementById('chatTextInput'),
+
+        recipientChips: document.getElementById('recipientChips'),
+        situationChips: document.getElementById('situationChips'),
+        bubbleModeBtns: document.querySelectorAll('.bubble-mode-btn'),
+        honneMemoInput: document.getElementById('honneMemoInput'),
+
+        styleQuickToggle: document.getElementById('styleQuickToggle'),
+        styleQuickDot: document.getElementById('styleQuickDot'),
+        styleQuickLabel: document.getElementById('styleQuickLabel'),
+
+        generateBtn: document.getElementById('generateBtn'),
+        loadingSection: document.getElementById('loadingSection'),
+        loadingMessage: document.getElementById('loadingMessage'),
+        errorSection: document.getElementById('errorSection'),
+        errorText: document.getElementById('errorText'),
+        resultSection: document.getElementById('resultSection'),
+        airReadingMemoText: document.getElementById('airReadingMemoText'),
+        patternsContainer: document.getElementById('patternsContainer'),
+        globalRetakeBtns: document.querySelectorAll('.global-retake-btn'),
+
+        // 設定モーダル
+        settingsModal: document.getElementById('settingsModal'),
+        closeSettingsBtn: document.getElementById('closeSettingsBtn'),
+        apiKeyInput: document.getElementById('apiKeyInput'),
+        toggleApiKeyVisibility: document.getElementById('toggleApiKeyVisibility'),
+        saveApiKeyBtn: document.getElementById('saveApiKeyBtn'),
+
+        useStyleProfileToggle: document.getElementById('useStyleProfileToggle'),
+        styleImageInput: document.getElementById('styleImageInput'),
+        styleImagePreviewList: document.getElementById('styleImagePreviewList'),
+        analyzeStyleBtn: document.getElementById('analyzeStyleBtn'),
+        styleProfileTextarea: document.getElementById('styleProfileTextarea'),
+        clearStyleBtn: document.getElementById('clearStyleBtn'),
+        saveStyleBtn: document.getElementById('saveStyleBtn'),
+
+        // ライトボックス
+        lightboxModal: document.getElementById('lightboxModal'),
+        lightboxCaption: document.getElementById('lightboxCaption'),
+        lightboxImg: document.getElementById('lightboxImg'),
+        closeLightboxBtn: document.getElementById('closeLightboxBtn'),
+
+        // トースト
+        toast: document.getElementById('toast'),
+        toastMessage: document.getElementById('toastMessage'),
+      };
+
+      // ==========================================
+      // ユーティリティ
+      // ==========================================
+      let toastTimer = null;
+      function showToast(message) {
+        els.toastMessage.textContent = message;
+        els.toast.classList.remove('opacity-0', 'translate-y-1');
+        els.toast.classList.add('opacity-100', 'translate-y-0');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => {
+          els.toast.classList.remove('opacity-100', 'translate-y-0');
+          els.toast.classList.add('opacity-0', 'translate-y-1');
+        }, 2100);
+      }
+
+      async function copyToClipboard(text, label = 'コピーしました') {
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(text);
+          } else {
+            throw new Error('fallback');
+          }
+          showToast(label);
+        } catch {
+          const ta = document.createElement('textarea');
+          ta.value = text;
+          ta.style.position = 'fixed';
+          ta.style.opacity = '0';
+          document.body.appendChild(ta);
+          ta.select();
+          try {
+            document.execCommand('copy');
+            showToast(label);
+          } catch {
+            showToast('コピーに失敗しました');
+          }
+          document.body.removeChild(ta);
+        }
+      }
+
+      function loadFileToImage(file) {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const img = new Image();
+            img.onload = () => resolve(img);
+            img.onerror = () => reject(new Error('画像の読み込みに失敗しました'));
+            img.src = reader.result;
+          };
+          reader.onerror = () => reject(new Error('ファイルの読み込みに失敗しました'));
+          reader.readAsDataURL(file);
+        });
+      }
+
+      /**
+       * HTML5 Canvasで長辺1200pxにリサイズ＋JPEG圧縮＋上部12%黒塗りマスク処理
+       */
+      function processImageOnCanvas(img, applyMask = true, maxSide = 1200, quality = 0.82) {
+        let { naturalWidth: w, naturalHeight: h } = img;
+        if (w > maxSide || h > maxSide) {
+          if (w >= h) {
+            h = Math.round((h * maxSide) / w);
+            w = maxSide;
+          } else {
+            w = Math.round((w * maxSide) / h);
+            h = maxSide;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+
+        // 背景白（透過PNG対策）
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(img, 0, 0, w, h);
+
+        if (applyMask) {
+          const maskHeight = Math.round(h * 0.12);
+          ctx.fillStyle = '#0f172a';
+          ctx.fillRect(0, 0, w, maskHeight);
+
+          // 視覚的に黒塗りされていることが一目でわかる控えめなラベル
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
+          const fontSize = Math.max(12, Math.round(maskHeight * 0.22));
+          ctx.font = `600 ${fontSize}px sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('PRIVACY MASKED', w / 2, maskHeight / 2);
+        }
+
+        const dataUrl = canvas.toDataURL('image/jpeg', quality);
+        const base64 = dataUrl.split(',')[1];
+        return { dataUrl, base64, width: w, height: h };
+      }
+
+      // ==========================================
+      // UI レンダリング
+      // ==========================================
+      function updateApiKeyUI() {
+        const hasKey = Boolean(state.apiKey.trim());
+        els.apiKeyDot.classList.toggle('hidden', hasKey);
+        els.apiKeyAlert.classList.toggle('hidden', hasKey);
+      }
+
+      function updateStyleQuickUI() {
+        const hasProfile = Boolean(state.styleProfile.trim());
+        const active = hasProfile && state.styleEnabled;
+
+        if (!hasProfile) {
+          els.styleQuickToggle.className = 'flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-slate-200 bg-slate-50 text-slate-500 text-[11px] font-semibold transition active:scale-95';
+          els.styleQuickDot.className = 'w-2 h-2 rounded-full bg-slate-300';
+          els.styleQuickLabel.textContent = '自分の文体：未登録';
+        } else if (active) {
+          els.styleQuickToggle.className = 'flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-brand-500/40 bg-brand-50 text-brand-800 text-[11px] font-semibold transition active:scale-95';
+          els.styleQuickDot.className = 'w-2 h-2 rounded-full bg-brand-600';
+          els.styleQuickLabel.textContent = '自分の文体：ON';
+        } else {
+          els.styleQuickToggle.className = 'flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-slate-200 bg-white text-slate-500 text-[11px] font-semibold transition active:scale-95';
+          els.styleQuickDot.className = 'w-2 h-2 rounded-full bg-slate-300';
+          els.styleQuickLabel.textContent = '自分の文体：OFF';
+        }
+
+        els.useStyleProfileToggle.checked = state.styleEnabled;
+      }
+
+      function renderChips() {
+        // 相手属性
+        els.recipientChips.innerHTML = '';
+        RECIPIENT_OPTIONS.forEach((opt) => {
+          const selected = state.recipient === opt;
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.textContent = opt;
+          btn.className = selected
+            ? 'px-3 py-1.5 rounded-full text-xs font-bold bg-brand-700 text-white shadow-xs transition active:scale-95'
+            : 'px-3 py-1.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 hover:bg-slate-200/70 transition active:scale-95';
+          btn.addEventListener('click', () => {
+            state.recipient = opt;
+            // Slack選択時は自動で「1通にまとめる」寄りに、それ以外は操作維持
+            if (opt === 'ビジネス・Slack') {
+              state.bubbleMode = 'single';
+              updateBubbleModeUI();
+            }
+            renderChips();
+          });
+          els.recipientChips.appendChild(btn);
+        });
+
+        // 状況プリセット
+        els.situationChips.innerHTML = '';
+        SITUATION_OPTIONS.forEach((opt) => {
+          const selected = state.situation === opt;
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.textContent = opt;
+          btn.className = selected
+            ? 'px-3 py-1.5 rounded-full text-xs font-bold bg-slate-800 text-white shadow-xs transition active:scale-95'
+            : 'px-3 py-1.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 hover:bg-slate-200/70 transition active:scale-95';
+          btn.addEventListener('click', () => {
+            state.situation = opt;
+            renderChips();
+          });
+          els.situationChips.appendChild(btn);
+        });
+      }
+
+      function updateBubbleModeUI() {
+        els.bubbleModeBtns.forEach((btn) => {
+          const isSelected = btn.dataset.bubbleMode === state.bubbleMode;
+          if (isSelected) {
+            btn.className = 'bubble-mode-btn py-2 px-2.5 rounded-lg text-xs font-bold transition text-center bg-white text-brand-800 shadow-xs';
+          } else {
+            btn.className = 'bubble-mode-btn py-2 px-2.5 rounded-lg text-xs font-semibold transition text-center text-slate-500 hover:text-slate-700';
+          }
+        });
+      }
+
+      function renderChatImagePreviews() {
+        const count = state.chatImages.length;
+        els.imagePreviewContainer.classList.toggle('hidden', count === 0);
+        if (count === 0) return;
+
+        els.imageCountLabel.textContent = `読み込み済み画像（${count}枚）${state.privacyMask ? '・上部黒塗り済' : '・黒塗りOFF'}`;
+        els.imagePreviewList.innerHTML = '';
+
+        state.chatImages.forEach((item, idx) => {
+          const wrap = document.createElement('div');
+          wrap.className = 'relative shrink-0 w-24 h-36 rounded-xl overflow-hidden border border-slate-200 bg-slate-100 group';
+
+          const img = document.createElement('img');
+          img.src = item.processedDataUrl;
+          img.alt = `トーク画面プレビュー ${idx + 1}`;
+          img.className = 'w-full h-full object-cover cursor-pointer';
+          img.addEventListener('click', () => {
+            els.lightboxImg.src = item.processedDataUrl;
+            els.lightboxCaption.textContent = `送信前プレビュー ${idx + 1}枚目（${state.privacyMask ? '上部12%黒塗り済' : '黒塗りなし'}）`;
+            els.lightboxModal.classList.remove('hidden');
+          });
+
+          const removeBtn = document.createElement('button');
+          removeBtn.type = 'button';
+          removeBtn.setAttribute('aria-label', '画像を削除');
+          removeBtn.className = 'absolute top-1 right-1 w-6 h-6 rounded-full bg-slate-900/75 text-white flex items-center justify-center text-xs active:scale-90 transition';
+          removeBtn.innerHTML = '&times;';
+          removeBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            state.chatImages = state.chatImages.filter((x) => x.id !== item.id);
+            renderChatImagePreviews();
+          });
+
+          const indexBadge = document.createElement('span');
+          indexBadge.className = 'absolute bottom-1 left-1 px-1.5 py-0.5 rounded bg-slate-900/70 text-white text-[10px] font-bold';
+          indexBadge.textContent = `${idx + 1}`;
+
+          wrap.appendChild(img);
+          wrap.appendChild(removeBtn);
+          wrap.appendChild(indexBadge);
+          els.imagePreviewList.appendChild(wrap);
+        });
+      }
+
+      async function addChatImageFiles(files) {
+        const validFiles = Array.from(files).filter((f) => f.type.startsWith('image/'));
+        if (validFiles.length === 0) return;
+
+        for (const file of validFiles) {
+          if (state.chatImages.length >= 6) {
+            showToast('画像は最大6枚まで読み込めます');
+            break;
+          }
+          try {
+            const img = await loadFileToImage(file);
+            const processed = processImageOnCanvas(img, state.privacyMask);
+            state.chatImages.push({
+              id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+              imgElement: img,
+              processedDataUrl: processed.dataUrl,
+              base64: processed.base64,
+            });
+          } catch (err) {
+            showToast(err.message || '画像を読み込めませんでした');
+          }
+        }
+        renderChatImagePreviews();
+      }
+
+      function reprocessAllChatImages() {
+        state.chatImages.forEach((item) => {
+          const processed = processImageOnCanvas(item.imgElement, state.privacyMask);
+          item.processedDataUrl = processed.dataUrl;
+          item.base64 = processed.base64;
+        });
+        renderChatImagePreviews();
+      }
+
+      // ==========================================
+      // Gemini API 通信（Structured Outputs）
+      // ==========================================
+      async function callGeminiAPI({ systemInstruction, parts, responseSchema, temperature = 0.75 }) {
+        const apiKey = state.apiKey.trim();
+        if (!apiKey) {
+          openSettingsModal();
+          throw new Error('Gemini APIキーが設定されていません。設定画面からキーを保存してください。');
+        }
+
+        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${encodeURIComponent(apiKey)}`;
+
+        const body = {
+          systemInstruction: {
+            parts: [{ text: systemInstruction }],
+          },
+          contents: [
+            {
+              role: 'user',
+              parts,
+            },
+          ],
+          generationConfig: {
+            temperature,
+            responseMimeType: 'application/json',
+            responseSchema,
+          },
+        };
+
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+
+        const data = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+          const apiMsg = data?.error?.message || `HTTP ${res.status}`;
+          if (res.status === 400 && apiMsg.toLowerCase().includes('api key')) {
+            throw new Error('APIキーが無効です。設定画面で正しいGemini APIキーを確認してください。');
+          }
+          if (res.status === 429) {
+            throw new Error('リクエスト上限に達しました。少し時間をおいて再度お試しください。');
+          }
+          throw new Error(`APIエラー: ${apiMsg}`);
+        }
+
+        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!text) {
+          throw new Error('AIから有効な応答が返されませんでした。画像や入力内容を確認して再度お試しください。');
+        }
+
+        try {
+          return JSON.parse(text);
+        } catch {
+          throw new Error('応答データの解析に失敗しました。もう一度お試しください。');
+        }
+      }
+
+      // 4パターン生成用スキーマ
+      const FULL_RESPONSE_SCHEMA = {
+        type: 'OBJECT',
+        properties: {
+          airReadingMemo: {
+            type: 'STRING',
+            description: '相手の現在の温度感、隠れた意図、避けるべき地雷を2行以内で簡潔に解説したメモ',
+          },
+          patterns: {
+            type: 'ARRAY',
+            description: '切り口の異なる4つの返信案。必ず「王道・無難案」「短文・あっさり案」「やわらか・好印象案」「本音オブラート案」の順に4つ出力する',
+            items: {
+              type: 'OBJECT',
+              properties: {
+                id: { type: 'STRING', description: 'p1, p2, p3, p4 のいずれか' },
+                type: { type: 'STRING', description: '王道・無難案 / 短文・あっさり案 / やわらか・好印象案 / 本音オブラート案' },
+                summary: { type: 'STRING', description: 'この案の狙いを15文字程度で簡潔に' },
+                messages: {
+                  type: 'ARRAY',
+                  items: { type: 'STRING' },
+                  description: '実際のトーク画面で送る吹き出しごとのメッセージ配列（1〜3通）',
+                },
+                stampAdvice: {
+                  type: 'STRING',
+                  description: 'この後に送ると角が取れるスタンプのテイスト（例：ゆるくペコリ系）を1行で',
+                },
+              },
+              required: ['id', 'type', 'summary', 'messages', 'stampAdvice'],
+            },
+          },
+        },
+        required: ['airReadingMemo', 'patterns'],
+      };
+
+      // 1カード個別リテイク用スキーマ
+      const SINGLE_PATTERN_SCHEMA = {
+        type: 'OBJECT',
+        properties: {
+          summary: { type: 'STRING', description: '微調整後の狙いを15文字程度で簡潔に' },
+          messages: {
+            type: 'ARRAY',
+            items: { type: 'STRING' },
+            description: '微調整後の吹き出しごとのメッセージ配列（1〜3通）',
+          },
+          stampAdvice: {
+            type: 'STRING',
+            description: 'この後に送ると角が取れるスタンプのテイストを1行で',
+          },
+        },
+        required: ['summary', 'messages', 'stampAdvice'],
+      };
+
+      // 文体解析用スキーマ
+      const STYLE_PROFILE_SCHEMA = {
+        type: 'OBJECT',
+        properties: {
+          profileText: {
+            type: 'STRING',
+            description: 'ユーザーの文体の癖を箇条書き5〜6行で要約したテキスト',
+          },
+        },
+        required: ['profileText'],
+      };
+
+      function buildSystemPrompt() {
+        const useStyle = state.styleEnabled && state.styleProfile.trim().length > 0;
+
+        return `あなたは日本人のLINE・Slackコミュニケーションに極めて精通した代筆プロフェッショナルです。
+チャット画面のスクリーンショットやテキストから文脈・人間関係・微妙な空気を読み取り、「絶対にAIが書いたとバレない、生身の人間らしい自然な返信案」を作成します。
+
+【最重要：AIっぽさの徹底排除ルール】
+- 「承知いたしました」「ご配慮いただきありがとうございます」「何かございましたらお気軽にご連絡ください」などの定型的なAI敬語を、ビジネス・Slack以外の場面で絶対に使わないこと。
+- 相手の言葉を毎回わざとらしくオウム返ししないこと。
+- 言い訳を論理的に長々と説明せず、人間らしい自然な余白・ぼかし表現を使うこと。
+- 「😊✨🙏」のようなテンプレ絵文字を全パターンで機械的に連発しないこと。相手属性と文体に合わせる。
+- 画像がLINE等のチャット画面の場合、通常「左側の吹き出し＝相手」「右側の吹き出し＝ユーザー本人」です。最新の発言に対してユーザーが返信する立場として考えてください。
+
+【吹き出し分割のルール】
+- 「2〜3通の連投を優先」の場合：LINE等で自然なリズムになるよう、messages配列を基本2〜3要素（短文案でも1〜2要素）に分けること。
+- 「1通にまとめる」の場合：messages配列は基本1要素にまとめること（必要な場合はメッセージ内に自然な改行を入れる）。
+
+【出力する4パターンの定義（必ずこの順序で4つ作成）】
+1. 王道・無難案：誰が読んでも角が立たない安全でバランスの良い返信
+2. 短文・あっさり案：ラリーを長引かせずスマートに終わらせる簡潔な短文
+3. やわらか・好印象案：相手への気遣いや温度感を添えた温かみのある返信
+4. 本音オブラート案：本音・断り・要望など言いにくいことを完全にオブラートに包んでやんわり伝える案（本音メモが空でも、角を立てず自分のペースを守る返信にする）
+
+${useStyle ? `【最優先：ユーザー本人の文体プロファイル】
+以下の文体の癖（語尾、句読点、絵文字量、改行リズム）を可能な限り忠実に再現して返信を書いてください（ただし上司・ビジネス・Slackなど相手属性に応じて礼儀は崩さないこと）。
+---
+${state.styleProfile.trim()}
+---` : ''}`;
+      }
+
+      function buildUserContextParts(extraInstruction = '') {
+        const parts = [];
+
+        // 画像添付
+        state.chatImages.forEach((item) => {
+          parts.push({
+            inlineData: {
+              mimeType: 'image/jpeg',
+              data: item.base64,
+            },
+          });
+        });
+
+        const bubbleLabel = state.bubbleMode === 'split'
+          ? '2〜3通の連投（短い吹き出し分割）を優先'
+          : '1通にまとめる';
+
+        const chatText = els.chatTextInput.value.trim();
+        const honne = els.honneMemoInput.value.trim();
+
+        let promptText = `【指定条件】
+- 相手属性：${state.recipient}
+- 状況プリセット：${state.situation}
+- 吹き出しスタイル：${bubbleLabel}
+- ユーザーの本音・補足メモ：${honne ? honne : '（特になし）'}
+`;
+
+        if (chatText) {
+          promptText += `\n【貼り付けられたトーク本文】\n${chatText}\n`;
+        }
+
+        if (extraInstruction) {
+          promptText += `\n【今回の追加調整指示】\n${extraInstruction}\n`;
+        }
+
+        promptText += `\n上記を踏まえ、JSONスキーマ通りに「空気読みメモ（2行以内）」と「4パターンの返信案」を生成してください。`;
+
+        parts.push({ text: promptText });
+        return parts;
+      }
+
+      // ==========================================
+      // 生成 & リテイク処理
+      // ==========================================
+      function setLoading(isLoading, message = '空気を読んで返信案を作成中...') {
+        state.isGenerating = isLoading;
+        els.generateBtn.disabled = isLoading;
+        els.loadingMessage.textContent = message;
+        els.loadingSection.classList.toggle('hidden', !isLoading);
+        if (isLoading) {
+          els.errorSection.classList.add('hidden');
+        }
+      }
+
+      function showError(msg) {
+        els.errorText.textContent = msg;
+        els.errorSection.classList.remove('hidden');
+      }
+
+      async function generateReplies(globalRetakeInstruction = '') {
+        if (state.isGenerating) return;
+
+        const hasInput = state.chatImages.length > 0 || els.chatTextInput.value.trim().length > 0;
+        if (!hasInput) {
+          showToast('スクショを読み込むか、トーク本文を入力してください');
+          return;
+        }
+
+        setLoading(
+          true,
+          globalRetakeInstruction
+            ? `「${globalRetakeInstruction}」方向で4案を調整中...`
+            : '空気を読んで返信案を作成中...'
+        );
+
+        try {
+          let extra = '';
+          if (globalRetakeInstruction && state.lastResult) {
+            extra = `前回の生成結果をベースに、4パターンすべてを「${globalRetakeInstruction}」方向へブラッシュアップしてください。\n前回の案：\n${JSON.stringify(state.lastResult.patterns)}`;
+          }
+
+          const result = await callGeminiAPI({
+            systemInstruction: buildSystemPrompt(),
+            parts: buildUserContextParts(extra),
+            responseSchema: FULL_RESPONSE_SCHEMA,
+          });
+
+          if (!result || !Array.isArray(result.patterns) || result.patterns.length === 0) {
+            throw new Error('返信案を取得できませんでした。再度お試しください。');
+          }
+
+          state.lastResult = result;
+          renderResults(result);
+          els.resultSection.classList.remove('hidden');
+
+          // 結果エリアへスムーズスクロール
+          setTimeout(() => {
+            els.resultSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }, 80);
+        } catch (err) {
+          showError(err.message || '予期しないエラーが発生しました');
+        } finally {
+          setLoading(false);
+        }
+      }
+
+      async function retakeSinglePattern(patternIndex, instruction, cardEl) {
+        if (!state.lastResult || !state.lastResult.patterns[patternIndex]) return;
+
+        const target = state.lastResult.patterns[patternIndex];
+        const overlay = cardEl.querySelector('.card-loading-overlay');
+        if (overlay) overlay.classList.remove('hidden');
+
+        try {
+          const extra = `現在生成済みの「${target.type}」の返信案だけを、文脈と相手属性を保ったまま「${instruction}」方向へリテイクしてください。
+元の案：${JSON.stringify(target.messages)}
+元の狙い：${target.summary}`;
+
+          const updated = await callGeminiAPI({
+            systemInstruction: buildSystemPrompt(),
+            parts: buildUserContextParts(extra),
+            responseSchema: SINGLE_PATTERN_SCHEMA,
+            temperature: 0.7,
+          });
+
+          state.lastResult.patterns[patternIndex] = {
+            ...target,
+            summary: updated.summary || target.summary,
+            messages: Array.isArray(updated.messages) && updated.messages.length ? updated.messages : target.messages,
+            stampAdvice: updated.stampAdvice || target.stampAdvice,
+          };
+
+          renderResults(state.lastResult);
+          showToast(`「${target.type}」を調整しました`);
+        } catch (err) {
+          showToast(err.message || '調整に失敗しました');
+        } finally {
+          if (overlay) overlay.classList.add('hidden');
+        }
+      }
+
+      function renderResults(data) {
+        els.airReadingMemoText.textContent = data.airReadingMemo || '';
+        els.patternsContainer.innerHTML = '';
+
+        data.patterns.forEach((pattern, index) => {
+          const styleMeta = PATTERN_BADGES[index % PATTERN_BADGES.length];
+          const messages = Array.isArray(pattern.messages) && pattern.messages.length > 0
+            ? pattern.messages
+            : [''];
+
+          const card = document.createElement('article');
+          card.className = 'relative bg-white rounded-2xl shadow-sm border border-slate-200/85 overflow-hidden';
+
+          // カード内ローディングオーバーレイ（個別リテイク時）
+          const overlay = document.createElement('div');
+          overlay.className = 'card-loading-overlay hidden absolute inset-0 z-10 bg-white/80 backdrop-blur-[1px] flex flex-col items-center justify-center gap-2';
+          overlay.innerHTML = `
+            <svg class="w-6 h-6 text-brand-700 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+            </svg>
+            <span class="text-xs font-bold text-slate-700">この案を微調整中...</span>
+          `;
+          card.appendChild(overlay);
+
+          // カードヘッダー
+          const header = document.createElement('div');
+          header.className = 'px-4 py-3 border-b border-slate-100 flex items-center justify-between gap-2';
+
+          const titleWrap = document.createElement('div');
+          titleWrap.className = 'flex items-center gap-2 min-w-0';
+
+          const badge = document.createElement('span');
+          badge.className = `shrink-0 px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${styleMeta.bg} ${styleMeta.text} ${styleMeta.accent}`;
+          badge.textContent = `${index + 1}. ${pattern.type}`;
+
+          const summary = document.createElement('span');
+          summary.className = 'text-[11px] text-slate-500 truncate';
+          summary.textContent = pattern.summary || '';
+
+          titleWrap.appendChild(badge);
+          titleWrap.appendChild(summary);
+
+          const copyAllBtn = document.createElement('button');
+          copyAllBtn.type = 'button';
+          copyAllBtn.className = 'shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 active:scale-95 text-white text-[11px] font-bold transition';
+          copyAllBtn.innerHTML = `
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+            <span>まとめてコピー</span>
+          `;
+          copyAllBtn.addEventListener('click', () => {
+            copyToClipboard(messages.join('\n'), `「${pattern.type}」をまとめてコピーしました`);
+          });
+
+          header.appendChild(titleWrap);
+          header.appendChild(copyAllBtn);
+          card.appendChild(header);
+
+          // LINE風トークプレビューエリア
+          const chatArea = document.createElement('div');
+          chatArea.className = 'bg-linebg px-3.5 py-3.5 space-y-2.5';
+
+          messages.forEach((msgText, msgIdx) => {
+            const row = document.createElement('div');
+            row.className = 'flex items-end justify-end gap-2';
+
+            const singleCopyBtn = document.createElement('button');
+            singleCopyBtn.type = 'button';
+            singleCopyBtn.className = 'shrink-0 px-2 py-1 rounded-lg bg-white/90 hover:bg-white border border-slate-200/90 text-[10px] font-bold text-slate-600 active:scale-95 transition shadow-2xs';
+            singleCopyBtn.textContent = messages.length > 1 ? `${msgIdx + 1}通目コピー` : 'コピー';
+            singleCopyBtn.addEventListener('click', () => {
+              copyToClipboard(msgText, messages.length > 1 ? `${msgIdx + 1}通目をコピーしました` : 'コピーしました');
+            });
+
+            const bubble = document.createElement('div');
+            bubble.className = 'chat-bubble max-w-[82%] bg-linebubble border border-linebubbleborder px-3.5 py-2.5 text-[14px] leading-relaxed text-slate-800 whitespace-pre-wrap break-words shadow-2xs cursor-pointer active:opacity-80 transition';
+            bubble.textContent = msgText;
+            bubble.title = 'タップしてコピー';
+            bubble.addEventListener('click', () => {
+              copyToClipboard(msgText, messages.length > 1 ? `${msgIdx + 1}通目をコピーしました` : 'コピーしました');
+            });
+
+            row.appendChild(singleCopyBtn);
+            row.appendChild(bubble);
+            chatArea.appendChild(row);
+          });
+
+          card.appendChild(chatArea);
+
+          // フッター（スタンプ助言 + 個別クイック微調整）
+          const footer = document.createElement('div');
+          footer.className = 'px-4 py-3 bg-white space-y-2.5';
+
+          // スタンプ助言
+          const stampRow = document.createElement('div');
+          stampRow.className = 'flex items-start gap-1.5 text-[11px] text-slate-600 bg-slate-50 rounded-lg px-2.5 py-1.5 border border-slate-100';
+          stampRow.innerHTML = `<span class="shrink-0 font-bold text-brand-700">スタンプ案:</span>`;
+          const stampSpan = document.createElement('span');
+          stampSpan.textContent = pattern.stampAdvice || 'ゆるくペコリ系';
+          stampRow.appendChild(stampSpan);
+          footer.appendChild(stampRow);
+
+          // 個別クイック微調整ボタン
+          const retakeBar = document.createElement('div');
+          retakeBar.className = 'flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-0.5';
+
+          const retakeOptions = [
+            { label: 'もう少し短く', instruction: 'もう少し短く' },
+            { label: 'もっとフランクに', instruction: 'もっとフランクに' },
+            { label: 'もっと丁寧に', instruction: 'もっと丁寧に' },
+            { label: '絵文字を減らす', instruction: '絵文字を減らす' },
+          ];
+
+          retakeOptions.forEach((opt) => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'shrink-0 px-2.5 py-1 rounded-full border border-slate-200 bg-white hover:bg-brand-50 hover:border-brand-300 text-[11px] font-semibold text-slate-600 active:scale-95 transition';
+            btn.textContent = opt.label;
+            btn.addEventListener('click', () => retakeSinglePattern(index, opt.instruction, card));
+            retakeBar.appendChild(btn);
+          });
+
+          footer.appendChild(retakeBar);
+          card.appendChild(footer);
+
+          els.patternsContainer.appendChild(card);
+        });
+      }
+
+      // ==========================================
+      // 設定モーダル & 文体学習機能
+      // ==========================================
+      function openSettingsModal() {
+        els.apiKeyInput.value = state.apiKey;
+        els.styleProfileTextarea.value = state.styleProfile;
+        els.useStyleProfileToggle.checked = state.styleEnabled;
+        els.settingsModal.classList.remove('hidden');
+        document.body.style.overflow = 'hidden';
+      }
+
+      function closeSettingsModal() {
+        els.settingsModal.classList.add('hidden');
+        document.body.style.overflow = '';
+      }
+
+      function renderStyleImagePreviews() {
+        const list = state.styleImages;
+        els.styleImagePreviewList.classList.toggle('hidden', list.length === 0);
+        els.analyzeStyleBtn.disabled = list.length === 0;
+        els.styleImagePreviewList.innerHTML = '';
+
+        list.forEach((item, idx) => {
+          const wrap = document.createElement('div');
+          wrap.className = 'relative shrink-0 w-16 h-24 rounded-lg overflow-hidden border border-slate-200';
+          const img = document.createElement('img');
+          img.src = item.processedDataUrl;
+          img.alt = `文体サンプル ${idx + 1}`;
+          img.className = 'w-full h-full object-cover';
+
+          const rm = document.createElement('button');
+          rm.type = 'button';
+          rm.className = 'absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-slate-900/75 text-white text-[10px] flex items-center justify-center';
+          rm.innerHTML = '&times;';
+          rm.addEventListener('click', () => {
+            state.styleImages = state.styleImages.filter((x) => x.id !== item.id);
+            renderStyleImagePreviews();
+          });
+
+          wrap.appendChild(img);
+          wrap.appendChild(rm);
+          els.styleImagePreviewList.appendChild(wrap);
+        });
+      }
+
+      async function analyzeUserStyle() {
+        if (state.styleImages.length === 0) return;
+
+        // 入力欄にAPIキーが入っていて未保存なら一時反映
+        const inputKey = els.apiKeyInput.value.trim();
+        if (inputKey && inputKey !== state.apiKey) {
+          state.apiKey = inputKey;
+          localStorage.setItem(STORAGE_KEYS.API_KEY, inputKey);
+          updateApiKeyUI();
+        }
+
+        els.analyzeStyleBtn.disabled = true;
+        const originalText = els.analyzeStyleBtn.innerHTML;
+        els.analyzeStyleBtn.innerHTML = `
+          <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+          </svg>
+          <span>文体を解析中...</span>
+        `;
+
+        try {
+          const parts = state.styleImages.map((item) => ({
+            inlineData: {
+              mimeType: 'image/jpeg',
+              data: item.base64,
+            },
+          }));
+
+          parts.push({
+            text: `これらのチャット画面のスクリーンショットから、画面右側（ユーザー本人）のメッセージだけを分析し、本人の文体の癖を箇条書き5〜6行で言語化してください。
+必ず以下の観点を含めてください：
+1. 敬語/タメ口の度合いと語尾の癖
+2. 句読点（「、」「。」）の有無や使い方
+3. 「！」「？」「w」「笑」などの使用頻度
+4. 絵文字・顔文字の傾向（使う種類や量）
+5. 改行リズム・1通あたりの長さ・よく使う言い回し`,
+          });
+
+          const res = await callGeminiAPI({
+            systemInstruction: 'あなたは文章スタイル分析の専門家です。チャットの右側（本人）の文章だけを見て、代筆AIが再現しやすいように具体的かつ簡潔な文体プロファイルを作成してください。個人名や固有名詞は含めないでください。',
+            parts,
+            responseSchema: STYLE_PROFILE_SCHEMA,
+            temperature: 0.3,
+          });
+
+          if (res?.profileText) {
+            els.styleProfileTextarea.value = res.profileText;
+            state.styleProfile = res.profileText;
+            state.styleEnabled = true;
+            localStorage.setItem(STORAGE_KEYS.STYLE_PROFILE, state.styleProfile);
+            localStorage.setItem(STORAGE_KEYS.STYLE_ENABLED, 'true');
+            // プライバシー保護のため解析後は一時画像を破棄
+            state.styleImages = [];
+            renderStyleImagePreviews();
+            updateStyleQuickUI();
+            showToast('文体を解析して保存しました！');
+          }
+        } catch (err) {
+          showToast(err.message || '文体解析に失敗しました');
+        } finally {
+          els.analyzeStyleBtn.innerHTML = originalText;
+          els.analyzeStyleBtn.disabled = state.styleImages.length === 0;
+        }
+      }
+
+      // ==========================================
+      // イベントリスナー登録
+      // ==========================================
+      // 画像ファイル選択
+      els.chatImageInput.addEventListener('change', async (e) => {
+        if (e.target.files?.length) {
+          await addChatImageFiles(e.target.files);
+          e.target.value = '';
+        }
+      });
+
+      // プライバシーマスクトグル
+      els.privacyMaskToggle.addEventListener('change', (e) => {
+        state.privacyMask = e.target.checked;
+        reprocessAllChatImages();
+      });
+
+      // 画像クリア
+      els.clearImagesBtn.addEventListener('click', () => {
+        state.chatImages = [];
+        renderChatImagePreviews();
+        showToast('画像をクリアしました');
+      });
+
+      // クリップボードボタン（iPhoneスクショ「コピーして削除」対応）
+      els.pasteClipboardBtn.addEventListener('click', async () => {
+        try {
+          if (!navigator.clipboard || !navigator.clipboard.read) {
+            throw new Error('unsupported');
+          }
+          const items = await navigator.clipboard.read();
+          let foundImage = false;
+          let foundText = false;
+
+          for (const item of items) {
+            const imageType = item.types.find((t) => t.startsWith('image/'));
+            if (imageType) {
+              const blob = await item.getType(imageType);
+              await addChatImageFiles([blob]);
+              foundImage = true;
+            } else if (item.types.includes('text/plain') && !foundImage) {
+              const blob = await item.getType('text/plain');
+              const text = await blob.text();
+              if (text.trim()) {
+                els.chatTextInput.value = els.chatTextInput.value
+                  ? `${els.chatTextInput.value}\n${text.trim()}`
+                  : text.trim();
+                foundText = true;
+              }
+            }
+          }
+
+          if (foundImage) {
+            showToast('スクショを貼り付けました');
+          } else if (foundText) {
+            showToast('テキストを貼り付けました');
+          } else {
+            showToast('クリップボードに画像やテキストが見つかりませんでした');
+          }
+        } catch {
+          showToast('自動貼付非対応です。テキスト欄長押し、またはCmd/Ctrl+Vで貼り付けてください');
+        }
+      });
+
+      // ページ全体のペーストイベント（PC/スマホ共通）
+      window.addEventListener('paste', async (e) => {
+        const items = e.clipboardData?.items;
+        if (!items) return;
+
+        const imageFiles = [];
+        for (const item of items) {
+          if (item.type.startsWith('image/')) {
+            const file = item.getAsFile();
+            if (file) imageFiles.push(file);
+          }
+        }
+
+        if (imageFiles.length > 0) {
+          e.preventDefault();
+          await addChatImageFiles(imageFiles);
+          showToast('クリップボードから画像を読み込みました');
+        }
+      });
+
+      // 吹き出しスタイル切替
+      els.bubbleModeBtns.forEach((btn) => {
+        btn.addEventListener('click', () => {
+          state.bubbleMode = btn.dataset.bubbleMode;
+          updateBubbleModeUI();
+        });
+      });
+
+      // メイン画面の文体クイックトグル
+      els.styleQuickToggle.addEventListener('click', () => {
+        if (!state.styleProfile.trim()) {
+          openSettingsModal();
+          return;
+        }
+        state.styleEnabled = !state.styleEnabled;
+        localStorage.setItem(STORAGE_KEYS.STYLE_ENABLED, String(state.styleEnabled));
+        updateStyleQuickUI();
+        showToast(state.styleEnabled ? '自分の文体を適用します' : '自分の文体をOFFにしました');
+      });
+
+      // 生成ボタン
+      els.generateBtn.addEventListener('click', () => generateReplies());
+
+      // 全体リテイクボタン
+      els.globalRetakeBtns.forEach((btn) => {
+        btn.addEventListener('click', () => {
+          generateReplies(btn.dataset.globalRetake);
+        });
+      });
+
+      // 設定モーダル開閉
+      els.openSettingsBtn.addEventListener('click', openSettingsModal);
+      els.alertSettingsBtn.addEventListener('click', openSettingsModal);
+      els.closeSettingsBtn.addEventListener('click', closeSettingsModal);
+      els.settingsModal.addEventListener('click', (e) => {
+        if (e.target === els.settingsModal) closeSettingsModal();
+      });
+
+      // APIキー表示切替・保存
+      els.toggleApiKeyVisibility.addEventListener('click', () => {
+        const isPwd = els.apiKeyInput.type === 'password';
+        els.apiKeyInput.type = isPwd ? 'text' : 'password';
+        els.toggleApiKeyVisibility.textContent = isPwd ? '隠す' : '表示';
+      });
+
+      els.saveApiKeyBtn.addEventListener('click', () => {
+        const val = els.apiKeyInput.value.trim();
+        state.apiKey = val;
+        if (val) {
+          localStorage.setItem(STORAGE_KEYS.API_KEY, val);
+          showToast('APIキーを保存しました');
+        } else {
+          localStorage.removeItem(STORAGE_KEYS.API_KEY);
+          showToast('APIキーを削除しました');
+        }
+        updateApiKeyUI();
+      });
+
+      // 文体解析用画像選択（最大2枚・上部12%自動黒塗り）
+      els.styleImageInput.addEventListener('change', async (e) => {
+        const files = Array.from(e.target.files || []).filter((f) => f.type.startsWith('image/')).slice(0, 2);
+        if (files.length === 0) return;
+
+        state.styleImages = [];
+        for (const file of files) {
+          try {
+            const img = await loadFileToImage(file);
+            const processed = processImageOnCanvas(img, true, 1200, 0.8);
+            state.styleImages.push({
+              id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              processedDataUrl: processed.dataUrl,
+              base64: processed.base64,
+            });
+          } catch {
+            showToast('画像の読み込みに失敗しました');
+          }
+        }
+        e.target.value = '';
+        renderStyleImagePreviews();
+      });
+
+      els.analyzeStyleBtn.addEventListener('click', analyzeUserStyle);
+
+      els.useStyleProfileToggle.addEventListener('change', (e) => {
+        state.styleEnabled = e.target.checked;
+        localStorage.setItem(STORAGE_KEYS.STYLE_ENABLED, String(state.styleEnabled));
+        updateStyleQuickUI();
+      });
+
+      els.saveStyleBtn.addEventListener('click', () => {
+        const text = els.styleProfileTextarea.value.trim();
+        state.styleProfile = text;
+        if (text) {
+          localStorage.setItem(STORAGE_KEYS.STYLE_PROFILE, text);
+          if (!state.styleEnabled) {
+            state.styleEnabled = true;
+            localStorage.setItem(STORAGE_KEYS.STYLE_ENABLED, 'true');
+          }
+          showToast('文体プロファイルを保存しました');
+        } else {
+          localStorage.removeItem(STORAGE_KEYS.STYLE_PROFILE);
+          state.styleEnabled = false;
+          localStorage.setItem(STORAGE_KEYS.STYLE_ENABLED, 'false');
+          showToast('文体プロファイルをクリアしました');
+        }
+        updateStyleQuickUI();
+      });
+
+      els.clearStyleBtn.addEventListener('click', () => {
+        els.styleProfileTextarea.value = '';
+        state.styleProfile = '';
+        state.styleEnabled = false;
+        state.styleImages = [];
+        localStorage.removeItem(STORAGE_KEYS.STYLE_PROFILE);
+        localStorage.setItem(STORAGE_KEYS.STYLE_ENABLED, 'false');
+        renderStyleImagePreviews();
+        updateStyleQuickUI();
+        showToast('文体プロファイルを消去しました');
+      });
+
+      // ライトボックス
+      els.closeLightboxBtn.addEventListener('click', () => els.lightboxModal.classList.add('hidden'));
+      els.lightboxModal.addEventListener('click', (e) => {
+        if (e.target === els.lightboxModal) els.lightboxModal.classList.add('hidden');
+      });
+
+      // ==========================================
+      // 初期化
+      // ==========================================
+      updateApiKeyUI();
+      updateStyleQuickUI();
+      renderChips();
+      updateBubbleModeUI();
+    })();
+  </script>
+</body>
+</html>
