@@ -98,15 +98,6 @@
     .animate-fade-up {
       animation: fadeSlideUp 0.28s ease-out forwards;
     }
-
-    @keyframes pulseSoft {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.45; }
-    }
-
-    .animate-pulse-soft {
-      animation: pulseSoft 1.5s ease-in-out infinite;
-    }
   </style>
 </head>
 <body class="text-slate-800 antialiased min-h-screen flex flex-col">
@@ -377,7 +368,7 @@
             <span class="text-[10px] text-slate-500">モデル: gemini-2.5-flash</span>
           </div>
           <div class="relative">
-            <input id="apiKeyInput" type="password" autocomplete="off" placeholder="AIzaSy..." class="w-full rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none pl-3.5 pr-16 py-2.5 text-sm font-mono text-slate-800" />
+            <input id="apiKeyInput" type="password" autocomplete="off" placeholder="AQ.... または AIzaSy..." class="w-full rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none pl-3.5 pr-16 py-2.5 text-sm font-mono text-slate-800" />
             <button id="toggleApiKeyVisibility" type="button" class="absolute right-2 top-1/2 -translate-y-1/2 px-2.5 py-1 text-[11px] font-semibold text-slate-500 hover:text-slate-700">
               表示
             </button>
@@ -520,7 +511,6 @@
         bubbleMode: 'split', // 'single' | 'split'
 
         // 読み込み済みチャット画像（メモリ上のみ保持）
-        // { id, imgElement, processedDataUrl, base64 }
         chatImages: [],
         // 文体解析用の一時画像（メモリ上のみ保持）
         styleImages: [],
@@ -667,7 +657,6 @@
         canvas.height = h;
         const ctx = canvas.getContext('2d');
 
-        // 背景白（透過PNG対策）
         ctx.fillStyle = '#ffffff';
         ctx.fillRect(0, 0, w, h);
         ctx.drawImage(img, 0, 0, w, h);
@@ -677,7 +666,6 @@
           ctx.fillStyle = '#0f172a';
           ctx.fillRect(0, 0, w, maskHeight);
 
-          // 視覚的に黒塗りされていることが一目でわかる控えめなラベル
           ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
           const fontSize = Math.max(12, Math.round(maskHeight * 0.22));
           ctx.font = `600 ${fontSize}px sans-serif`;
@@ -722,7 +710,6 @@
       }
 
       function renderChips() {
-        // 相手属性
         els.recipientChips.innerHTML = '';
         RECIPIENT_OPTIONS.forEach((opt) => {
           const selected = state.recipient === opt;
@@ -734,7 +721,6 @@
             : 'px-3 py-1.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 hover:bg-slate-200/70 transition active:scale-95';
           btn.addEventListener('click', () => {
             state.recipient = opt;
-            // Slack選択時は自動で「1通にまとめる」寄りに、それ以外は操作維持
             if (opt === 'ビジネス・Slack') {
               state.bubbleMode = 'single';
               updateBubbleModeUI();
@@ -744,7 +730,6 @@
           els.recipientChips.appendChild(btn);
         });
 
-        // 状況プリセット
         els.situationChips.innerHTML = '';
         SITUATION_OPTIONS.forEach((opt) => {
           const selected = state.situation === opt;
@@ -852,7 +837,7 @@
       }
 
       // ==========================================
-      // Gemini API 通信（Structured Outputs）
+      // Gemini API 通信（x-goog-api-key ヘッダー + Structured Outputs）
       // ==========================================
       async function callGeminiAPI({ systemInstruction, parts, responseSchema, temperature = 0.75 }) {
         const apiKey = state.apiKey.trim();
@@ -861,7 +846,7 @@
           throw new Error('Gemini APIキーが設定されていません。設定画面からキーを保存してください。');
         }
 
-        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${encodeURIComponent(apiKey)}`;
+        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent`;
 
         const body = {
           systemInstruction: {
@@ -882,7 +867,10 @@
 
         const res = await fetch(endpoint, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': apiKey,
+          },
           body: JSON.stringify(body),
         });
 
@@ -890,7 +878,7 @@
 
         if (!res.ok) {
           const apiMsg = data?.error?.message || `HTTP ${res.status}`;
-          if (res.status === 400 && apiMsg.toLowerCase().includes('api key')) {
+          if ((res.status === 400 || res.status === 403) && apiMsg.toLowerCase().includes('api key')) {
             throw new Error('APIキーが無効です。設定画面で正しいGemini APIキーを確認してください。');
           }
           if (res.status === 429) {
@@ -1008,7 +996,6 @@ ${state.styleProfile.trim()}
       function buildUserContextParts(extraInstruction = '') {
         const parts = [];
 
-        // 画像添付
         state.chatImages.forEach((item) => {
           parts.push({
             inlineData: {
@@ -1100,7 +1087,6 @@ ${state.styleProfile.trim()}
           renderResults(result);
           els.resultSection.classList.remove('hidden');
 
-          // 結果エリアへスムーズスクロール
           setTimeout(() => {
             els.resultSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
           }, 80);
@@ -1159,7 +1145,6 @@ ${state.styleProfile.trim()}
           const card = document.createElement('article');
           card.className = 'relative bg-white rounded-2xl shadow-sm border border-slate-200/85 overflow-hidden';
 
-          // カード内ローディングオーバーレイ（個別リテイク時）
           const overlay = document.createElement('div');
           overlay.className = 'card-loading-overlay hidden absolute inset-0 z-10 bg-white/80 backdrop-blur-[1px] flex flex-col items-center justify-center gap-2';
           overlay.innerHTML = `
@@ -1171,7 +1156,6 @@ ${state.styleProfile.trim()}
           `;
           card.appendChild(overlay);
 
-          // カードヘッダー
           const header = document.createElement('div');
           header.className = 'px-4 py-3 border-b border-slate-100 flex items-center justify-between gap-2';
 
@@ -1206,7 +1190,6 @@ ${state.styleProfile.trim()}
           header.appendChild(copyAllBtn);
           card.appendChild(header);
 
-          // LINE風トークプレビューエリア
           const chatArea = document.createElement('div');
           chatArea.className = 'bg-linebg px-3.5 py-3.5 space-y-2.5';
 
@@ -1237,11 +1220,9 @@ ${state.styleProfile.trim()}
 
           card.appendChild(chatArea);
 
-          // フッター（スタンプ助言 + 個別クイック微調整）
           const footer = document.createElement('div');
           footer.className = 'px-4 py-3 bg-white space-y-2.5';
 
-          // スタンプ助言
           const stampRow = document.createElement('div');
           stampRow.className = 'flex items-start gap-1.5 text-[11px] text-slate-600 bg-slate-50 rounded-lg px-2.5 py-1.5 border border-slate-100';
           stampRow.innerHTML = `<span class="shrink-0 font-bold text-brand-700">スタンプ案:</span>`;
@@ -1250,7 +1231,6 @@ ${state.styleProfile.trim()}
           stampRow.appendChild(stampSpan);
           footer.appendChild(stampRow);
 
-          // 個別クイック微調整ボタン
           const retakeBar = document.createElement('div');
           retakeBar.className = 'flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-0.5';
 
@@ -1325,7 +1305,6 @@ ${state.styleProfile.trim()}
       async function analyzeUserStyle() {
         if (state.styleImages.length === 0) return;
 
-        // 入力欄にAPIキーが入っていて未保存なら一時反映
         const inputKey = els.apiKeyInput.value.trim();
         if (inputKey && inputKey !== state.apiKey) {
           state.apiKey = inputKey;
@@ -1374,7 +1353,6 @@ ${state.styleProfile.trim()}
             state.styleEnabled = true;
             localStorage.setItem(STORAGE_KEYS.STYLE_PROFILE, state.styleProfile);
             localStorage.setItem(STORAGE_KEYS.STYLE_ENABLED, 'true');
-            // プライバシー保護のため解析後は一時画像を破棄
             state.styleImages = [];
             renderStyleImagePreviews();
             updateStyleQuickUI();
@@ -1391,7 +1369,6 @@ ${state.styleProfile.trim()}
       // ==========================================
       // イベントリスナー登録
       // ==========================================
-      // 画像ファイル選択
       els.chatImageInput.addEventListener('change', async (e) => {
         if (e.target.files?.length) {
           await addChatImageFiles(e.target.files);
@@ -1399,20 +1376,17 @@ ${state.styleProfile.trim()}
         }
       });
 
-      // プライバシーマスクトグル
       els.privacyMaskToggle.addEventListener('change', (e) => {
         state.privacyMask = e.target.checked;
         reprocessAllChatImages();
       });
 
-      // 画像クリア
       els.clearImagesBtn.addEventListener('click', () => {
         state.chatImages = [];
         renderChatImagePreviews();
         showToast('画像をクリアしました');
       });
 
-      // クリップボードボタン（iPhoneスクショ「コピーして削除」対応）
       els.pasteClipboardBtn.addEventListener('click', async () => {
         try {
           if (!navigator.clipboard || !navigator.clipboard.read) {
@@ -1452,7 +1426,6 @@ ${state.styleProfile.trim()}
         }
       });
 
-      // ページ全体のペーストイベント（PC/スマホ共通）
       window.addEventListener('paste', async (e) => {
         const items = e.clipboardData?.items;
         if (!items) return;
@@ -1472,7 +1445,6 @@ ${state.styleProfile.trim()}
         }
       });
 
-      // 吹き出しスタイル切替
       els.bubbleModeBtns.forEach((btn) => {
         btn.addEventListener('click', () => {
           state.bubbleMode = btn.dataset.bubbleMode;
@@ -1480,7 +1452,6 @@ ${state.styleProfile.trim()}
         });
       });
 
-      // メイン画面の文体クイックトグル
       els.styleQuickToggle.addEventListener('click', () => {
         if (!state.styleProfile.trim()) {
           openSettingsModal();
@@ -1492,17 +1463,14 @@ ${state.styleProfile.trim()}
         showToast(state.styleEnabled ? '自分の文体を適用します' : '自分の文体をOFFにしました');
       });
 
-      // 生成ボタン
       els.generateBtn.addEventListener('click', () => generateReplies());
 
-      // 全体リテイクボタン
       els.globalRetakeBtns.forEach((btn) => {
         btn.addEventListener('click', () => {
           generateReplies(btn.dataset.globalRetake);
         });
       });
 
-      // 設定モーダル開閉
       els.openSettingsBtn.addEventListener('click', openSettingsModal);
       els.alertSettingsBtn.addEventListener('click', openSettingsModal);
       els.closeSettingsBtn.addEventListener('click', closeSettingsModal);
@@ -1510,7 +1478,6 @@ ${state.styleProfile.trim()}
         if (e.target === els.settingsModal) closeSettingsModal();
       });
 
-      // APIキー表示切替・保存
       els.toggleApiKeyVisibility.addEventListener('click', () => {
         const isPwd = els.apiKeyInput.type === 'password';
         els.apiKeyInput.type = isPwd ? 'text' : 'password';
@@ -1530,7 +1497,6 @@ ${state.styleProfile.trim()}
         updateApiKeyUI();
       });
 
-      // 文体解析用画像選択（最大2枚・上部12%自動黒塗り）
       els.styleImageInput.addEventListener('change', async (e) => {
         const files = Array.from(e.target.files || []).filter((f) => f.type.startsWith('image/')).slice(0, 2);
         if (files.length === 0) return;
@@ -1592,7 +1558,6 @@ ${state.styleProfile.trim()}
         showToast('文体プロファイルを消去しました');
       });
 
-      // ライトボックス
       els.closeLightboxBtn.addEventListener('click', () => els.lightboxModal.classList.add('hidden'));
       els.lightboxModal.addEventListener('click', (e) => {
         if (e.target === els.lightboxModal) els.lightboxModal.classList.add('hidden');
