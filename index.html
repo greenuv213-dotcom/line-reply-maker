@@ -365,7 +365,7 @@
         <div class="space-y-2.5">
           <div class="flex items-center justify-between">
             <label for="apiKeyInput" class="text-xs font-bold text-slate-800">Gemini APIキー</label>
-            <span class="text-[10px] text-slate-500">モデル: gemini-2.5-flash</span>
+            <span class="text-[10px] text-slate-500">モデル: gemini-3.8-flash</span>
           </div>
           <div class="relative">
             <input id="apiKeyInput" type="password" autocomplete="off" placeholder="AQ.... または AIzaSy..." class="w-full rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none pl-3.5 pr-16 py-2.5 text-sm font-mono text-slate-800" />
@@ -464,7 +464,7 @@
       // ==========================================
       // 定数 & ストレージキー（画像・履歴は保存しない）
       // ==========================================
-      const MODEL_NAME = 'gemini-2.5-flash';
+      const MODEL_NAME = 'gemini-3.8-flash';
       const STORAGE_KEYS = {
         API_KEY: 'kadonashi_gemini_api_key',
         STYLE_PROFILE: 'kadonashi_style_profile',
@@ -837,7 +837,7 @@
       }
 
       // ==========================================
-      // Gemini API 通信（x-goog-api-key ヘッダー + Structured Outputs）
+      // Gemini API 通信（gemini-3.8-flash / x-goog-api-key + Structured Outputs）
       // ==========================================
       async function callGeminiAPI({ systemInstruction, parts, responseSchema, temperature = 0.75 }) {
         const apiKey = state.apiKey.trim();
@@ -883,6 +883,9 @@
           }
           if (res.status === 429) {
             throw new Error('リクエスト上限に達しました。少し時間をおいて再度お試しください。');
+          }
+          if (res.status === 503) {
+            throw new Error('現在Google側のサーバーが混み合っています。数十秒ほど待ってから再度お試しください。');
           }
           throw new Error(`APIエラー: ${apiMsg}`);
         }
